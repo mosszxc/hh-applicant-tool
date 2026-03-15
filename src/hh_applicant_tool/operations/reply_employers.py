@@ -91,7 +91,13 @@ class Operation(BaseOperation):
         parser.add_argument(
             "--first-prompt",
             help="Начальный промпт чата для AI",
-            default="Ты — соискатель на HeadHunter. Отвечай вежливо и кратко.",
+            default="Ты — соискатель на HeadHunter. Отвечай вежливо и кратко (2-4 предложения). "
+                "Отвечай только на последнее сообщение работодателя. "
+                "Если работодатель предлагает созвон — соглашайся и проси уточнить время. "
+                "КРИТИЧЕСКИ ВАЖНО: НИКОГДА не говори что у тебя нет опыта, навыков или знаний. "
+                "НИКОГДА не отказывайся от вакансии. НИКОГДА не говори 'к сожалению'. "
+                "Если спрашивают про навык которого нет в резюме — скажи что имеешь базовый опыт и активно развиваешься в этом направлении. "
+                "Всегда подавай себя уверенно и позитивно. Ты хочешь получить эту работу.",
         )
         parser.add_argument(
             "--prompt",
@@ -112,8 +118,8 @@ class Operation(BaseOperation):
         self.only_invitations = args.only_invitations
 
         self.pre_prompt = args.prompt
-        self.openai_chat = (
-            tool.get_openai_chat(args.first_prompt) if args.use_ai else None
+        self.ai_chat = (
+            tool.get_ai_chat(args.first_prompt) if args.use_ai else None
         )
         self.period = args.period
 
@@ -243,24 +249,49 @@ class Operation(BaseOperation):
                     last_message["author"]["participant_type"] == "employer"
                 )
 
-                if is_employer_message or not negotiation.get(
-                    "viewed_by_opponent"
-                ):
+                if not is_employer_message:
+                    continue
+
+                # Определяем робота-рекрутера по паттернам
+                chat_text = " ".join(message_history[-10:]).lower()
+                is_robot = any(p in chat_text for p in [
+                    "робот-рекрутер",
+                    "ии-помощник",
+                    "ответьте на несколько вопросов",
+                    "ответить на несколько вопросов",
+                    "это займет всего",
+                    "ваши ответы отправлены работодателю",
+                    "пройти короткое первичное интервью",
+                    "ai-рекрутер",
+                    "начнем?",
+                ])
+
+                if is_robot:
+                    logger.debug("Обнаружен робот-рекрутер, используем короткие ответы")
+
+                if is_employer_message:
                     send_message = ""
                     if self.reply_message:
                         send_message = (
                             rand_text(self.reply_message) % placeholders
                         )
                         logger.debug(f"Template message: {send_message}")
-                    elif self.openai_chat:
+                    elif self.ai_chat:
                         try:
+                            robot_instruction = (
+                                "Это робот-рекрутер, который задаёт короткие вопросы. "
+                                "Отвечай МАКСИМАЛЬНО коротко: 'да', 'нет', '3 года', 'Python, FastAPI, Django' и т.п. "
+                                "Никаких вежливых фраз, приветствий и пояснений. Только суть в 1-5 слов. "
+                                "НИКОГДА не говори что у тебя нет опыта. Всегда подавай свои навыки как релевантные."
+                            )
+                            instruction = robot_instruction if is_robot else self.pre_prompt
                             ai_query = (
                                 f"Вакансия: {placeholders['vacancy_name']}\n"
                                 f"История переписки:\n"
                                 + "\n".join(message_history[-10:])
-                                + f"\n\nИнструкция: {self.pre_prompt}"
+                                + f"\n\nИнструкция: {instruction}"
                             )
-                            send_message = self.openai_chat.send_message(
+                            send_message = self.ai_chat.send_message(
                                 ai_query
                             )
                             logger.debug(f"AI message: {send_message}")
@@ -326,7 +357,7 @@ class Operation(BaseOperation):
                     # Финальная отправка текста
                     if self.dry_run:
                         logger.debug(
-                            "dry-run: отклик на",
+                            "dry-run: отклик на %s: %s",
                             vacancy["alternate_url"],
                             send_message,
                         )

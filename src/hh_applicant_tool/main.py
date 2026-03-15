@@ -17,7 +17,6 @@ from pkgutil import iter_modules
 from typing import Any, Iterable
 
 import requests
-import urllib3
 
 from . import ai, api, utils
 from .storage import StorageFacade
@@ -163,8 +162,6 @@ class HHApplicantTool(MegaTool):
 
     @cached_property
     def session(self) -> requests.Session:
-        urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
-
         session = requests.Session()
         session.verify = False
 
@@ -302,10 +299,34 @@ class HHApplicantTool(MegaTool):
             model=c.get("model"),
             temperature=c.get("temperature", 0.7),
             max_completion_tokens=c.get("max_completion_tokens", 1000),
+            timeout=c.get("timeout", 60.0),
             system_prompt=system_prompt,
             completion_endpoint=c.get("completion_endpoint"),
             session=self.session,
         )
+
+    def get_anthropic_chat(self, system_prompt: str) -> ai.ChatAnthropic:
+        c = self.config.get("anthropic", {})
+        if not (token := c.get("token")):
+            raise ValueError("Токен для Anthropic не задан")
+        return ai.ChatAnthropic(
+            token=token,
+            model=c.get("model"),
+            temperature=c.get("temperature", 0.7),
+            max_tokens=c.get("max_tokens", 1000),
+            system_prompt=system_prompt,
+            api_endpoint=c.get("api_endpoint"),
+            session=self.session,
+        )
+
+    def get_ai_chat(self, system_prompt: str) -> ai.ChatOpenAI | ai.ChatAnthropic:
+        provider = self.config.get("ai_provider", "anthropic")
+        if provider == "openai":
+            return self.get_openai_chat(system_prompt)
+        elif provider == "anthropic":
+            return self.get_anthropic_chat(system_prompt)
+        else:
+            raise ValueError(f"Неизвестный AI провайдер: {provider}")
 
     # TODO: вынести в миксин какой
     def _extract_xsrf_token(self, content: str) -> str:

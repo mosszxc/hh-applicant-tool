@@ -326,8 +326,8 @@ class Operation(BaseOperation):
         self.sort_point_lng = args.sort_point_lng
         self.top_lat = args.top_lat
         self.total_pages = args.total_pages
-        self.openai_chat = (
-            tool.get_openai_chat(args.first_prompt) if args.use_ai else None
+        self.ai_chat = (
+            tool.get_ai_chat(args.first_prompt) if args.use_ai else None
         )
         self._apply_vacancies()
 
@@ -528,7 +528,7 @@ class Operation(BaseOperation):
                 if self.force_message or vacancy.get(
                     "response_letter_required"
                 ):
-                    if self.openai_chat:
+                    if self.ai_chat:
                         msg = self.pre_prompt + "\n\n"
                         msg += (
                             "Название вакансии: "
@@ -538,7 +538,7 @@ class Operation(BaseOperation):
                             "Мое резюме:" + message_placeholders["resume_title"]
                         )
                         logger.debug("prompt: %s", msg)
-                        letter = self.openai_chat.send_message(msg)
+                        letter = self.ai_chat.send_message(msg)
                     else:
                         letter = (
                             rand_text(self.cover_letter) % message_placeholders
@@ -724,7 +724,7 @@ class Operation(BaseOperation):
             question = (task.get("description") or "").strip()
 
             if solutions:
-                if self.openai_chat:
+                if self.ai_chat:
                     options = "\n".join(
                         [
                             f"{s['id']}: {strip_tags(s['text'])}"
@@ -736,7 +736,7 @@ class Operation(BaseOperation):
                         f"Варианты:\n{options}\n"
                         f"Выбери ID правильного ответа. Пришли только ID."
                     )
-                    ai_answer = self.openai_chat.send_message(prompt).strip()
+                    ai_answer = self.ai_chat.send_message(prompt).strip()
                     # Ищем ID в ответе AI на случай лишнего текста
                     match = re.search(r"\d+", ai_answer)
                     selected_id = (
@@ -758,9 +758,9 @@ class Operation(BaseOperation):
                     answer = rand_text(
                         "{{Простите|Извините}, но я не перехожу по {внешним|сторонним} ссылкам, так как {опасаюсь взлома|не хочу {быть взломанным|подхватить вирус|чтобы у меня {со|с банковского} счета украли деньги}}.|У меня нет времени на заполнение анкет и гуглодоков}"
                     )
-                elif self.openai_chat:
+                elif self.ai_chat:
                     prompt = f"Дай краткий и профессиональный ответ на вопрос: {question}"
-                    answer = self.openai_chat.send_message(prompt)
+                    answer = self.ai_chat.send_message(prompt)
                 # Тупоеблые любят вопросы с ответами да/нет, где ответ да является правильным в большинстве случаев.
                 else:
                     answer = "Да"
