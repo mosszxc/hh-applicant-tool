@@ -116,7 +116,16 @@ class Operation(BaseOperation):
         parser.add_argument(
             "--first-prompt",
             help="Начальный помпт чата для генерации сопроводительного письма",
-            default="Напиши сопроводительное письмо для отклика на эту вакансию. Не используй placeholder'ы, твой ответ будет отправлен без обработки.",  # noqa: E501
+            default=(
+                "Ты — помощник для составления сопроводительных писем. "
+                "Напиши сопроводительное письмо для отклика на вакансию. "
+                "Правила:\n"
+                "- Используй настоящее имя кандидата (оно будет указано в контексте). "
+                "НИКОГДА не используй placeholder'ы вроде [Ваше имя], [Имя], [Компания] и т.п.\n"
+                "- Письмо должно быть 5-7 предложений, профессиональный тон, на русском языке.\n"
+                "- Подчеркни релевантные навыки кандидата, соответствующие требованиям вакансии.\n"
+                "- Твой ответ будет отправлен без обработки — пиши только текст письма, без пояснений."
+            ),  # noqa: E501
         )
         parser.add_argument(
             "--prompt",
@@ -531,12 +540,40 @@ class Operation(BaseOperation):
                     if self.ai_chat:
                         msg = self.pre_prompt + "\n\n"
                         msg += (
-                            "Название вакансии: "
-                            + message_placeholders["vacancy_name"]
+                            "Кандидат: "
+                            + message_placeholders["first_name"]
+                            + " "
+                            + message_placeholders["last_name"]
+                            + "\n"
                         )
                         msg += (
-                            "Мое резюме:" + message_placeholders["resume_title"]
+                            "Резюме: "
+                            + message_placeholders["resume_title"]
+                            + "\n"
                         )
+                        msg += (
+                            "Название вакансии: "
+                            + message_placeholders["vacancy_name"]
+                            + "\n"
+                        )
+
+                        # Добавляем snippet вакансии (требования и обязанности)
+                        snippet = vacancy.get("snippet", {})
+                        requirement = snippet.get("requirement") or ""
+                        responsibility = snippet.get("responsibility") or ""
+                        if requirement:
+                            msg += "Требования: " + strip_tags(requirement) + "\n"
+                        if responsibility:
+                            msg += "Обязанности: " + strip_tags(responsibility) + "\n"
+
+                        # Если есть файл с описанием навыков — добавляем как контекст
+                        if self.args.letter_file and self.cover_letter:
+                            msg += (
+                                "\nО кандидате (навыки и опыт):\n"
+                                + self.cover_letter
+                                + "\n"
+                            )
+
                         logger.debug("prompt: %s", msg)
                         letter = self.ai_chat.send_message(msg)
                     else:
